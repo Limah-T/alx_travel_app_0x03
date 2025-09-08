@@ -95,7 +95,22 @@ class SetPasswordSerializer(serializers.Serializer):
             user = User.objects.get(email=email.strip().lower())
         except User.DoesNotExist:
             raise serializers.ValidationError('Invalid email provided.')
-        user_data = {'email': user.email, 'new_password': new_password}
-        return user_data
+        user_data = {'user': user, 'new_password': new_password}
+        self.context['user_data'] = user_data
+        return self.context
 
 
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField()
+    new_password = serializers.CharField()
+
+    def validate(self, attrs):
+        old_password = attrs.get("old_password", None)
+        new_password = attrs.get("new_password", None)
+        if old_password is None:
+            raise serializers.ValidationError({'old_password': 'This field may not be blank.'})
+        if new_password is None:
+            raise serializers.ValidationError({'new_password': 'This field may not be blank.'})
+        if len(new_password.strip()) < 8:
+            raise serializers.ValidationError({'new_password': 'Password length must be less than 8.'})
+        return super().validate(attrs)

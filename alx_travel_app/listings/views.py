@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from django.contrib.auth.hashers import make_password, check_password
 
 from rest_framework import viewsets
 from rest_framework.response import Response
@@ -14,7 +15,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.decorators import authentication_classes, permission_classes, api_view, renderer_classes
 
 from .serializers import PropertySerializer, BookingSerializer
-from .auth import UserSerializer, LoginSerializer, ResetPasswordSerializer, SetPasswordSerializer
+from .auth import UserSerializer, LoginSerializer, ResetPasswordSerializer, SetPasswordSerializer, ChangePasswordSerializer
 from .models import Property, Booking, User, Payment
 from .tasks import email_verification
 from .tokens import get_token, decode_token
@@ -26,7 +27,7 @@ load_dotenv(override=True)
 class UserApiView(APIView):
     authentication_classes = []
     permission_classes = []
-    http_method_names = ["get", "post"]
+    http_method_names = ["post"]
     serializer_class = UserSerializer
     
     def post(self, request, *args, **kwargs):
@@ -138,12 +139,16 @@ class UserProfileViewset(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         if not request.user.is_active:
             return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         serializer = self.serializer_class(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK) 
   
     def update(self, request, *args, **kwargs):
         if not request.user.is_active:
             return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         serializer = self.serializer_class(instance=request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -159,7 +164,7 @@ class UserProfileViewset(viewsets.ModelViewSet):
         if not request.user.is_active:
             return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
         token = get_token(user_id=request.user.user_id, email=request.user.email)
-        email_verification(subject="Update Email account", email=request.user.email,
+        email_verification(subject="Deactivate account?", email=request.user.email,
                                txt_template_name="listings/text_mails/deactivate_confirmation.txt", 
                                verification_url=f"{os.environ.get('APP_DOMAIN')}/deactivate_acct_verify?token={token}")
         return Response({"message": "Please check your email for verification"}, status=status.HTTP_200_OK)
@@ -219,6 +224,7 @@ class ResetPassword(APIView):
     authentication_classes = []
     permission_classes = []
     serializer_class = ResetPasswordSerializer
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
@@ -259,28 +265,60 @@ def VerifyPasswordReset(request):
         return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
     user.reset_password=True
     user.save(update_fields=["reset_password"])
-    Token.objects.filter(user=user).delete()
     return Response({"message": "Please proceed to reset your password"}, status=status.HTTP_200_OK, template_name="listings/acct_deactivated.html") 
 
 class SetPasswordView(APIView):
     authentication_classes = []
     permission_classes = []
     serializer_class = SetPasswordSerializer
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data["user_data"]["email"]
+        user = serializer.validated_data["user_data"]["user"]
         new_password = serializer.validated_data["user_data"]["new_password"]
-        print(user, new_password)
         if not user.is_active:
             return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         if not user.verified:
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         if not user.reset_password:
             return Response({'error':'Please request for email to verify password reset'}, status=status.HTTP_400_BAD_REQUEST)
+        user.password = make_password(new_password)
+        user.reset_password = False
+        user.save(update_fields=["password", "reset_password"])
+        Token.objects.filter(user=user).delete()
         return Response({'success': 'Password has been reset successfully'}, status=status.HTTP_200_OK)
+    
+class Change_passwordView(APIView):
+    serializer_class = ChangePasswordSerializer
+    http_method_names = ["post"]
 
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_active:
+            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        old_password = serializer.validated_data['old_password']
+        new_password = serializer.validated_data['new_password']
+        if old_password.strip() == new_password.strip():
+            return Response({"error": "Old and New password cannot be the-same."})
+        if not check_password(old_password.strip(), request.user.password):
+            return Response({"error": "Old password is incorrect"}, status=status.HTTP_400_BAD_REQUEST)
+        request.user.password = make_password(new_password)
+        request.user.save(update_fields=["password"])
+        return Response({"success": "Password has ben changed successfully"}, status=status.HTTP_200_OK)
+
+class LogoutView(APIView):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        Token.objects.get(user=request.user).delete()
+        return Response({"success": "Logout successfully"}, status=status.HTTP_200_OK)
+    
 class PropertyViewset(viewsets.ModelViewSet):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
