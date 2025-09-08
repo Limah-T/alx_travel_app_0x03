@@ -1,13 +1,13 @@
 from pathlib import Path
-import environ, os
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+import environ, os, smtplib, ssl, certifi
 
 env = environ.Env(
     DEBUG=(bool, True)
 )
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = env('SECRET_KEY')
 
@@ -25,7 +25,7 @@ INSTALLED_APPS = [
     'listings',
     'rest_framework',
     'rest_framework.authtoken',
-    'django_celery_results',
+    # 'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -72,9 +72,15 @@ DATABASES = {
 EMAIL_BACKEND = env('EMAIL_BACKEND')
 EMAIL_HOST = env('EMAIL_HOST')
 EMAIL_PORT = env('EMAIL_PORT')
-EMAIL_USE_TLS = env('EMAIL_USE_TLS')
+EMAIL_USE_SSL = bool(env('EMAIL_USE_SSL'))
+EMAIL_USE_TLS = bool(env('EMAIL_USE_TLS'))
 EMAIL_HOST_USER = env('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+
+
+# Force SSL certificate verification
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+smtplib.SMTP_SSL.context = ssl_context
 
 AUTH_PASSWORD_VALIDATORS = [
     {

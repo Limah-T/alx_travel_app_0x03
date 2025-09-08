@@ -1,6 +1,8 @@
 desktop.ini
 .env
-venv/
+venv
+private.pem
+public.pem
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

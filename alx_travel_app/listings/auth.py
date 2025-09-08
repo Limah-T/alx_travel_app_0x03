@@ -1,39 +1,101 @@
 from rest_framework import serializers
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth import authenticate
+
 from .models import User
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.Serializer):
     user_id = serializers.UUIDField(read_only=True)
-    password = serializers.CharField(style={'input_type': 'password'}, 
-                                    write_only=True)    
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.EmailField()
+    phone_number = serializers.CharField()
+    password = serializers.CharField(write_only=True)
 
-    class Meta:
-        model = User
-        fields = [
-            'user_id', 'first_name', 'last_name',
-            'email', 'password'
-            ]
+    def validate(self, attrs):
+        if attrs.get("first_name") is None:
+            raise serializers.ValidationError({'first_name': 'this field is required.'})
+        if attrs.get("last_name") is None:
+            raise serializers.ValidationError({'last_name': 'this field is required.'})
+        if attrs.get("email") is None:
+            raise serializers.ValidationError({'email': 'this field is required.'})
+        if attrs.get("phone_number") is None:
+            raise serializers.ValidationError({'phone_number': 'this field is required.'})
+        if len(attrs.get("password")) < 8:
+            raise serializers.ValidationError({'password': 'password must not be less than 8.'})
+        return super().validate(attrs) 
 
-    def validate_password(self, value):
-        if not value:
-            raise serializers.ValidationError({'error': 'This field may not be blank!'})
-        if len(value) < 8:
-            raise serializers.ValidationError({'error': 'Password must be greater than or equal to 8.'})
-        password = make_password(value)
-        return password
-    
     def create(self, validated_data):
-        return super().create(validated_data)
+        email = validated_data["email"]
+        phone_number = vars["phone_number"]
+        if User.objects.filter(email=email.strip().lower()).exists():
+            raise serializers.ValidationError({"email": "Email in use."})
+        if User.objects.filter(phone_number=phone_number.strip()).exists():
+            raise serializers.ValidationError({"phone_number": "Phone number already exists."})
+        user = User.objects.create_user(**validated_data)
+        return user
     
+    def update(self, instance, validated_data):
+        email = validated_data["email"]
+        phone_number = validated_data["phone_number"]
+        first_name = validated_data["first_name"]
+        last_name = validated_data["last_name"]
+        if email.strip().lower() == instance.email and phone_number.strip() == instance.phone_number and first_name.strip().title() == instance.first_name and last_name.strip().title() == instance.last_name:
+            raise serializers.ValidationError("Nothing to update.")
+                  
+        if instance.phone_number != phone_number.strip():
+            if User.objects.exclude(user_id=instance.user_id).filter(phone_number=phone_number.strip()).exists():
+                raise serializers.ValidationError({"phone_number": "Phone number already exists."})
+            instance.phone_number = phone_number.strip()
+        if instance.email != email.strip().lower():
+            if User.objects.exclude(user_id=instance.user_id).filter(email=email.strip().lower()).exists():
+                raise serializers.ValidationError({"email": "Email in use."})
+            instance.pending_email = email
+        instance.first_name = first_name
+        instance.last_name = last_name
+        instance.save()
+        return instance
+        
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField(write_only=True)
     password = serializers.CharField(write_only=True)
 
     def validate_email(self, value):
         if not value:
-            raise serializers.ValidationError({'error': 'This field may not be blank!'})
-        if not User.objects.filter(email__iexact=value.strip()).exists():
-            raise serializers.ValidationError({'error': 'Unable to log in with the provided credentials'})
-        return value.strip()
-    
-    
+            raise serializers.ValidationError('This field may not be blank!')
+        email = value.strip().lower()
+        if not User.objects.filter(email=email).exists():
+            raise serializers.ValidationError('Unable to log in with the provided credentials')
+        return email
+       
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True)
+
+    def validate_email(self, value):
+        if not value:
+            raise serializers.ValidationError('This field may not be blank!')
+        email = value.strip().lower()
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError('Invalid email provided.')
+        return user 
+
+class SetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        email = attrs.get("email", None)
+        new_password = attrs.get("new_password", None)
+        if email is None:
+            raise serializers.ValidationError({'email':'This field may not be blank!'})
+        if new_password is None:
+            raise serializers.ValidationError({'new_password':'This field may not be blank!'})
+        try:
+            user = User.objects.get(email=email.strip().lower())
+        except User.DoesNotExist:
+            raise serializers.ValidationError('Invalid email provided.')
+        user_data = {'email': user.email, 'new_password': new_password}
+        return user_data
+
+

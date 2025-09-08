@@ -21,7 +21,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, first_name, last_name, email, phone_number, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        if not extra_fields.get('is_staff_'):
+        if not extra_fields.get('is_staff'):
             raise ValueError('Superuser must have is_staff=True.')
         if not extra_fields.get('is_superuser'):
             raise ValueError('Superuser must have is_superuser=True.')
@@ -34,6 +34,7 @@ class User(AbstractUser):
     last_name = models.CharField(max_length=30, blank=False, null=False)
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
+    pending_email = models.EmailField(null=True, blank=True)
     role = models.CharField(max_length=10, choices=[
         ('guest', 'Guest'),
         ('host', 'Host'),
@@ -41,6 +42,9 @@ class User(AbstractUser):
     ], default='guest')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    verified = models.BooleanField(default=False)
+    reset_password = models.BooleanField(default=False)
     objects = UserManager()
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name', 'phone_number']
@@ -54,10 +58,17 @@ class User(AbstractUser):
             self.email = self.email.strip().lower()
         super().save(*args, **kwargs)
 
+    def confirm_pending_email(self):
+        """Confirming pending email after verification"""
+        if self.pending_email:
+            self.email = self.pending_email.strip().lower()
+            self.pending_email = None
+            self.save(update_fields=["email", "pending_email"])
+
     
 class Property(models.Model):
     property_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties')  # Foreign Key to User model
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties')  #
     name = models.CharField(max_length=255, null=False, blank=False)
     description = models.TextField(null=False, blank=False)
     location = models.CharField(max_length=255, null=False, blank=False)
@@ -74,8 +85,8 @@ class Property(models.Model):
 
 class Booking(models.Model):
     booking_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    property_id = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings')  # Foreign Key to Property model
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')  # Foreign Key to User model
+    property_id = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings')  
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')  
     start_date = models.DateField()
     end_date = models.DateField()
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -86,21 +97,21 @@ class Booking(models.Model):
     ], default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    
 class Review(models.Model):
     review_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='reviews')  # Foreign Key to Property model
-    user_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')  # Foreign Key to User model
-    rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='reviews')  
+    user_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')  
+    rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)], default=0)
     comment = models.TextField(null=False, blank=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
 class Payment(models.Model):
     payment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='payments')  # Foreign Key to Booking model
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='payments')  
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=[
         ('completed', 'Completed'),
-        ('failed', 'Failed')
+        ('failed', 'Failed'),
+        ('pending', 'Pending')
     ], default='pending')
     transaction_id = models.CharField(max_length=255, unique=True)

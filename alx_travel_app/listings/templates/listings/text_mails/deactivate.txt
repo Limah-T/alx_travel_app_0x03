@@ -1,0 +1,8 @@
+Hello {{verification_url}},
+
+Your account on PropertyApp has been deactivated by an administrator due to [reason, e.g., policy violation, inactivity, or request].
+
+If you think this was done in error or need clarification, please contact us at support@propertyapp.com.
+
+Thank you,
+The PropertyApp Team

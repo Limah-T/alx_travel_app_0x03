@@ -1,61 +1,285 @@
-from rest_framework import viewsets
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.authtoken.models import Token
-from rest_framework.decorators import authentication_classes, permission_classes
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+
+from rest_framework import viewsets
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.renderers import JSONRenderer, TemplateHTMLRenderer
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import authentication_classes, permission_classes, api_view, renderer_classes
+
 from .serializers import PropertySerializer, BookingSerializer
-from .auth import UserSerializer, LoginSerializer
+from .auth import UserSerializer, LoginSerializer, ResetPasswordSerializer, SetPasswordSerializer
 from .models import Property, Booking, User, Payment
-from .tasks import send_email
+from .tasks import email_verification
+from .tokens import get_token, decode_token
 from dotenv import load_dotenv
 import os, requests, uuid
 
 load_dotenv(override=True)
 
-class UserViewset(viewsets.ModelViewSet):
+class UserApiView(APIView):
     authentication_classes = []
     permission_classes = []
-    http_method_names = ["get", "post", "patch", "put", "delete"]
+    http_method_names = ["get", "post"]
     serializer_class = UserSerializer
-
-    def get_queryset(self):
-        return User.objects.all()
     
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-        print(serializer.validated_data)
-        serializer.save()
-        return Response(data=serializer.data, status=status.HTTP_200_OK)
+        user = serializer.save()
+        token = get_token(user_id=user.user_id, email=user.email)
+        print(f"{os.environ.get('APP_DOMAIN')}/verify?token={token}")
+        if not email_verification(
+            subject="Email Verification",
+            email=user.email,
+            txt_template_name="listings/text_mails/signup.txt",
+            verification_url=f"{os.environ.get('APP_DOMAIN')}/verify?token={token}"
+        ):
+            return Response({"message": "could not process the request at the moment, please try again later!"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "please check your email for verification."}, status=status.HTTP_200_OK)
     
-    def list(self, request, *args, **kwargs):
-        serializer = self.get_serializer(self.get_queryset(), many=True)
-        print(serializer.data)
-        return Response(serializer.data)
-    
-class LoginViewset(viewsets.ModelViewSet):
+@api_view(["get"])
+@authentication_classes([])
+@permission_classes([])
+@renderer_classes([JSONRenderer, TemplateHTMLRenderer])
+def Verify_signup_token(request):
+    token = request.GET.get("token") or request.query_params.get("token")
+    if not token:
+        return Response({"error": "Token is missing"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    payload = decode_token(token)
+    if not payload:
+        return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    email = payload.get("sub")
+    uuid = payload.get("iss")
+    if not email:
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    try:
+        user = User.objects.get(email=email, user_id=uuid)
+    except User.DoesNotExist:
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    if not user.is_active:
+        return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    user.verified=True
+    user.save(update_fields=["verified"])
+    return Response({"success": "Email has been verified successfully"}, status=status.HTTP_200_OK, template_name="listings/valid_email.html")
+
+class LoginApiView(APIView):
     authentication_classes = []
     permission_classes = []
     http_method_names = ["post"]
     serializer_class = LoginSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data.get('email')
         password = serializer.validated_data.get('password')
-        user = authenticate(email=email, password=password)
-        print(user)
+        user = authenticate(request, email=email, password=password)
         if not user:
             return Response({'error': 'Unable to log in with the provided credentials'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.verified:
+            return Response({"error": "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.is_active:
+            return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         token, _ = Token.objects.get_or_create(user=user)
         return Response({'token': token.key}, status=status.HTTP_200_OK)
+    
+class ModifyUserViewset(viewsets.ModelViewSet):
+    # permissson_classes allowed are IsAuthenticated and IsAdminUser
+    serializer_class = UserSerializer
+    lookup_field = "uuid"
+
+    def list(self, request, *args, **kwargs):
+        user = request.user
+        if not user.is_superuser:
+            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        if not user.is_active:
+            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = self.serializer_class(User.objects.all(), many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        admin_user = request.user
+        user_id = kwargs.get("id", None)
+        if not admin_user.is_superuser:
+            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        if not admin_user.is_active:
+            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not admin_user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user_id:
+            return Response({'error': 'User ID is missing'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(user_id=str(user_id))
+        except User.DoesNotExist:
+            return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.is_active:
+            return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        Token.objects.filter(user=user).delete()
+        email_verification(subject="Account Deactivation", email=user.email, txt_template_name="listings/text_mails/deactivate.txt", verification_url=f"{user.first_name} {user.last_name}")
+        return Response({'error': f"{user.first_name} {user.last_name}'s account has been deactivated successfully by {admin_user.first_name}"})
+    
+class UserProfileViewset(viewsets.ModelViewSet):
+    serializer_class = UserSerializer
+    queryset = User.objects.all()
+
+    def retrieve(self, request, *args, **kwargs):
+        if not request.user.is_active:
+            return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.serializer_class(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK) 
+  
+    def update(self, request, *args, **kwargs):
+        if not request.user.is_active:
+            return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.serializer_class(instance=request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        if user.pending_email is not None:
+            token = get_token(user_id=user.user_id, email=user.pending_email)
+            email_verification(subject="Update Email account", email=user.pending_email,
+                               txt_template_name="listings/text_mails/update_email.txt", 
+                               verification_url=f"{os.environ.get('APP_DOMAIN')}/verify_update?token={token}")
+            return Response({"message": "Please check your email for verification"}, status=status.HTTP_200_OK)
+        return Response({"success": "Profile has been updated successfully"}, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_active:
+            return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
+        token = get_token(user_id=request.user.user_id, email=request.user.email)
+        email_verification(subject="Update Email account", email=request.user.email,
+                               txt_template_name="listings/text_mails/deactivate_confirmation.txt", 
+                               verification_url=f"{os.environ.get('APP_DOMAIN')}/deactivate_acct_verify?token={token}")
+        return Response({"message": "Please check your email for verification"}, status=status.HTTP_200_OK)
+
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([])
+@renderer_classes([JSONRenderer, TemplateHTMLRenderer])    
+def VerifyEmailUpdate(request):
+    token = request.GET.get("token") or request.query_params.get("token")
+    if not token:
+        return Response({"error": "Token is missing"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    payload = decode_token(token)
+    if not payload:
+        return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    email = payload.get("sub")
+    uuid = payload.get("iss")
+    if not email:
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    try:
+        user = User.objects.get(pending_email=email, user_id=uuid)
+    except User.DoesNotExist:
+        return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    user.confirm_pending_email()
+    return Response({"success": "Email has been verified successfully"}, status=status.HTTP_200_OK, template_name="listings/valid_email.html")
+
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([])
+@renderer_classes([JSONRenderer, TemplateHTMLRenderer])
+def VerifyAcctDeactivation(request):
+    token = request.GET.get("token") or request.query_params.get("token")
+    if not token:
+        return Response({"error": "Token is missing"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    payload = decode_token(token)
+    if not payload:
+        return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    email = payload.get("sub")
+    uuid = payload.get("iss")
+    if not email:
+        return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    if not uuid:
+        return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    try:
+        user = User.objects.get(email=email, user_id=uuid)
+    except User.DoesNotExist:
+        return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    if not user.is_active:
+        return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    user.verified=False
+    user.is_active=False
+    user.save(update_fields=["verified", "is_active"])
+    Token.objects.filter(user=user).delete()
+    return Response({"success": "Account has been deactivated successfully"}, status=status.HTTP_200_OK, template_name="listings/acct_deactivated.html")    
+
+class ResetPassword(APIView):
+    authentication_classes = []
+    permission_classes = []
+    serializer_class = ResetPasswordSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["email"]
+        if not user.is_active:
+            return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        token = get_token(user_id=user.user_id, email=user.email)
+        email_verification(
+            subject="Reset Password", email=user.email, txt_template_name="listings/text_mails/reset_password_confirm.txt", verification_url=f"{os.environ.get('APP_DOMAIN')}/reset_password_verify?token={token}"
+        )
+        return Response({"message": "Please check your message for verification."}, status=status.HTTP_200_OK)
+    
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([])
+@renderer_classes([JSONRenderer, TemplateHTMLRenderer])
+def VerifyPasswordReset(request):
+    token = request.GET.get("token") or request.query_params.get("token")
+    if not token:
+        return Response({"error": "Token is missing"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    payload = decode_token(token)
+    if not payload:
+        return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    email = payload.get("sub")
+    uuid = payload.get("iss")
+    if not email:
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    try:
+        user = User.objects.get(email=email, user_id=uuid)
+    except User.DoesNotExist:
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    if not user.is_active:
+        return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
+    if not user.verified:
+        return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+    user.reset_password=True
+    user.save(update_fields=["reset_password"])
+    Token.objects.filter(user=user).delete()
+    return Response({"message": "Please proceed to reset your password"}, status=status.HTTP_200_OK, template_name="listings/acct_deactivated.html") 
+
+class SetPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = []
+    serializer_class = SetPasswordSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user_data"]["email"]
+        new_password = serializer.validated_data["user_data"]["new_password"]
+        print(user, new_password)
+        if not user.is_active:
+            return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.reset_password:
+            return Response({'error':'Please request for email to verify password reset'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': 'Password has been reset successfully'}, status=status.HTTP_200_OK)
 
 class PropertyViewset(viewsets.ModelViewSet):
     authentication_classes = [TokenAuthentication]
@@ -192,5 +416,5 @@ def payment_view(request, *args, **kwargs):
             status='completed',
             transaction_id=payload['tx_ref']
         )
-        send_email.delay(booking.user.email, booking.property_id.name)
+        # send_email.delay(booking.user.email, booking.property_id.name)
         return JsonResponse(data, status=response.status_code)

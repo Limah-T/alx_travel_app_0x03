@@ -1,0 +1,12 @@
+Hello [User’s Name],
+
+We received a request to deactivate your PropertyApp account.
+
+If you made this request, please confirm by clicking the link below:
+
+{{verification_url}}
+
+If you did not make this request, you can ignore this email and your account will remain active.
+
+Thank you,  
+The PropertyApp Team
