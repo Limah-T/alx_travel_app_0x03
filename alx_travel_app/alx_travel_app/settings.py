@@ -69,15 +69,6 @@ DATABASES = {
     }
 }
 
-EMAIL_BACKEND = env('EMAIL_BACKEND')
-EMAIL_HOST = env('EMAIL_HOST')
-EMAIL_PORT = env('EMAIL_PORT')
-EMAIL_USE_SSL = bool(env('EMAIL_USE_SSL'))
-EMAIL_USE_TLS = bool(env('EMAIL_USE_TLS'))
-EMAIL_HOST_USER = env('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
-
-
 # Force SSL certificate verification
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 smtplib.SMTP_SSL.context = ssl_context
@@ -121,5 +112,31 @@ REST_FRAMEWORK = {
     ],
 }
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Example for Redis
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/1'
+# Email configuration
+
+EMAIL_BACKEND = env('EMAIL_BACKEND')
+EMAIL_HOST = env('EMAIL_HOST')
+EMAIL_PORT = env('EMAIL_PORT')
+EMAIL_USE_SSL = bool(env('EMAIL_USE_SSL'))
+EMAIL_USE_TLS = bool(env('EMAIL_USE_TLS'))
+EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+
+# Celery + Redis configuration
+CELERY_BROKER_URL = f"{env('REDIS_URL')}/0"
+CELERY_RESULT_BACKEND = f"{env('REDIS_URL')}/1"
+CELERY_TASK_ALWAYS_EAGER = bool(env('CELERY_TASK_ALWAYS_EAGER'))
+CELERY_TASK_TIME_LIMIT = int(env('CELERY_TASK_TIME_LIMIT'))
+CELERY_TASK_SOFT_TIME_LIMIT = int(env('CELERY_TASK_SOFT_TIME_LIMIT'))
+CELERY_TASK_ACKS_LATE = bool(env('CELERY_TASK_ACKS_LATE'))
+CELERY_TASK_REJECT_ON_WORKER_LOST = bool('CELERY_TASK_REJECT_ON_WORKER_LOST ')
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = bool('CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP')
+
+# Caching settings
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": f"{env('REDIS_URL')}",
+        "TIMEOUT": None,   # cache forever by default
+    }
+}

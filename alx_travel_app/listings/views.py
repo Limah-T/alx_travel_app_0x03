@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password, check_password
+from django.core.cache import cache
 
 from rest_framework import viewsets
 from rest_framework.response import Response
@@ -31,18 +32,18 @@ class UserApiView(APIView):
     serializer_class = UserSerializer
     
     def post(self, request, *args, **kwargs):
+        # User.objects.all().delete()
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         token = get_token(user_id=user.user_id, email=user.email)
         print(f"{os.environ.get('APP_DOMAIN')}/verify?token={token}")
-        if not email_verification(
+        email_verification.delay_on_commit(
             subject="Email Verification",
             email=user.email,
             txt_template_name="listings/text_mails/signup.txt",
             verification_url=f"{os.environ.get('APP_DOMAIN')}/verify?token={token}"
-        ):
-            return Response({"message": "could not process the request at the moment, please try again later!"}, status=status.HTTP_400_BAD_REQUEST)
+        )
         return Response({"message": "please check your email for verification."}, status=status.HTTP_200_OK)
     
 @api_view(["get"])
@@ -96,16 +97,34 @@ class ModifyUserViewset(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     lookup_field = "uuid"
 
+    def get_queryset(self):
+        import time
+        #  Try cache first
+        users = cache.get("users")
+        if users is None:
+            start = time.perf_counter()
+            users = list(User.objects.values("user_id", "first_name", "last_name", "email", "phone_number"))
+            cache.set("users", users)
+            end = time.perf_counter()
+            print("DB fetch + cache store:", end - start)
+        else:
+            start = time.perf_counter()
+            _ = list(users)  # force evaluation if needed
+            end = time.perf_counter()
+            print("Cache fetch:", end - start)
+        return users
+    
+
     def list(self, request, *args, **kwargs):
         user = request.user
-        if not user.is_superuser:
-            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        # if not user.is_superuser:
+        #     return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
         if not user.is_active:
             return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         if not user.verified:
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         
-        serializer = self.serializer_class(User.objects.all(), many=True)
+        serializer = self.serializer_class(self.get_queryset(), many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def destroy(self, request, *args, **kwargs):
@@ -134,14 +153,20 @@ class ModifyUserViewset(viewsets.ModelViewSet):
     
 class UserProfileViewset(viewsets.ModelViewSet):
     serializer_class = UserSerializer
-    queryset = User.objects.all()
 
     def retrieve(self, request, *args, **kwargs):
         if not request.user.is_active:
             return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         if not request.user.verified:
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
-        serializer = self.serializer_class(request.user)
+        
+        user_profile = f"user_profile_{request.user.user_id}"
+        get_user_cached_data = cache.get(user_profile)
+
+        if get_user_cached_data is None:
+            cache.set(user_profile, request.user)
+
+        serializer = self.serializer_class(get_user_cached_data)
         return Response(serializer.data, status=status.HTTP_200_OK) 
   
     def update(self, request, *args, **kwargs):

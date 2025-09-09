@@ -26,7 +26,7 @@ class UserSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         email = validated_data["email"]
-        phone_number = vars["phone_number"]
+        phone_number = validated_data["phone_number"]
         if User.objects.filter(email=email.strip().lower()).exists():
             raise serializers.ValidationError({"email": "Email in use."})
         if User.objects.filter(phone_number=phone_number.strip()).exists():

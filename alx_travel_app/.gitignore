@@ -3,6 +3,7 @@ desktop.ini
 venv
 private.pem
 public.pem
+venv_ubuntu
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
