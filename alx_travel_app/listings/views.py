@@ -98,27 +98,17 @@ class ModifyUserViewset(viewsets.ModelViewSet):
     lookup_field = "uuid"
 
     def get_queryset(self):
-        import time
-        #  Try cache first
         users = cache.get("users")
         if users is None:
-            start = time.perf_counter()
-            users = list(User.objects.values("user_id", "first_name", "last_name", "email", "phone_number"))
-            cache.set("users", users)
-            end = time.perf_counter()
-            print("DB fetch + cache store:", end - start)
-        else:
-            start = time.perf_counter()
-            _ = list(users)  # force evaluation if needed
-            end = time.perf_counter()
-            print("Cache fetch:", end - start)
+            all_users = list(User.objects.values("user_id", "first_name", "last_name", "email", "phone_number"))
+            cache.set("users", all_users)
+            users = all_users
         return users
     
-
     def list(self, request, *args, **kwargs):
         user = request.user
-        # if not user.is_superuser:
-        #     return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        if not user.is_superuser:
+            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
         if not user.is_active:
             return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         if not user.verified:
@@ -127,7 +117,7 @@ class ModifyUserViewset(viewsets.ModelViewSet):
         serializer = self.serializer_class(self.get_queryset(), many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
-    def destroy(self, request, *args, **kwargs):
+    def retrieve(self, request, *args, **kwargs):
         admin_user = request.user
         user_id = kwargs.get("id", None)
         if not admin_user.is_superuser:
@@ -138,18 +128,45 @@ class ModifyUserViewset(viewsets.ModelViewSet):
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         if not user_id:
             return Response({'error': 'User ID is missing'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            user = User.objects.get(user_id=str(user_id))
-        except User.DoesNotExist:
-            return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+        single_user = cache.get(f"user_profile_{user_id}")
+        if single_user is None:
+            try:
+                user_ = User.objects.get(user_id=user_id)
+                cache.set(f"user_profile_{user_id}", user_)
+                single_user = user_
+            except User.DoesNotExist:
+                return Response({"error": "User does not exist."}, status=status.HTTP_400_BAD_REQUEST)        
+        serializer = self.serializer_class(single_user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        admin_user = request.user
+        user_id = kwargs.get("id", None)
+        # if not admin_user.is_superuser:
+        #     return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        if not admin_user.is_active:
+            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
+        if not admin_user.verified:
+            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
+        if not user_id:
+            return Response({'error': 'User ID is missing'}, status=status.HTTP_400_BAD_REQUEST)
+        user = cache.get(f"user_profile_{user_id}")
+        if user is None:
+            try:
+                user = User.objects.get(user_id=user_id)
+                cache.set(f"user_profile_{user_id}", user)
+                user = user
+            except User.DoesNotExist:
+                return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
         if not user.is_active:
             return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
         
-        user.is_active = False
-        user.save(update_fields=["is_active"])
-        Token.objects.filter(user=user).delete()
-        email_verification(subject="Account Deactivation", email=user.email, txt_template_name="listings/text_mails/deactivate.txt", verification_url=f"{user.first_name} {user.last_name}")
+        # user.is_active = False
+        # user.save(update_fields=["is_active"])
+        # Token.objects.filter(user=user).delete()
+        email_verification.delay(subject="Account Deactivation", email=user.email, txt_template_name="listings/text_mails/deactivate.txt", verification_url=f"{user.first_name} {user.last_name}")
         return Response({'error': f"{user.first_name} {user.last_name}'s account has been deactivated successfully by {admin_user.first_name}"})
+
     
 class UserProfileViewset(viewsets.ModelViewSet):
     serializer_class = UserSerializer

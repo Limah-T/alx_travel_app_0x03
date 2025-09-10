@@ -64,7 +64,6 @@ class User(AbstractUser):
             self.email = self.pending_email.strip().lower()
             self.pending_email = None
             self.save(update_fields=["email", "pending_email"])
-
     
 class Property(models.Model):
     property_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

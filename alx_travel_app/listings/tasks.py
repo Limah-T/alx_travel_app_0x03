@@ -21,7 +21,6 @@ def email_verification(self, subject, email, txt_template_name, verification_url
     msg["Subject"] = subject
     text = render_to_string(txt_template_name, {"verification_url": verification_url})
     msg.attach(MIMEText(text, "plain"))
-    print(host, port, sender_email, password)
     context = ssl.create_default_context()
     try:
         with smtplib.SMTP_SSL(host=host, port=port, timeout=30, context=context) as server:

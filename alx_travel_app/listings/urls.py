@@ -6,7 +6,7 @@ urlpatterns = [
     path('verify', Verify_signup_token, name='verify'),
     path('login/', LoginApiView.as_view(), name='login'),
     path('users/', ModifyUserViewset.as_view({'get': 'list'}), name='users'),
-    path('user/<uuid:id>/', ModifyUserViewset.as_view({'patch': 'update', 'put': 'update', 'delete': 'destroy'}), name='user'),
+    path('user/<uuid:id>/', ModifyUserViewset.as_view({'get':'retrieve', 'patch': 'update', 'put': 'update', 'delete': 'destroy'}), name='user'),
     path('profile/', UserProfileViewset.as_view({'get': 'retrieve', 'patch': 'update', 'put': 'update', 'delete': 'destroy'}), name='profile'),
     path('verify_update', VerifyEmailUpdate, name='verify_update'),
 
