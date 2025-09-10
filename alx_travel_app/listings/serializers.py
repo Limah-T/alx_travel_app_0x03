@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Property, Booking, User
+from .models import Property, Booking, User, Host
+from .auth import UserSerializer
 from datetime import datetime
 
 def check_date(value):
@@ -8,6 +9,60 @@ def check_date(value):
         return False
     return True
 
+class HostSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Host
+        fields = '__all__'
+
+    def create(self, validated_data):
+        link = validated_data.get('social_link')
+        if link is not None:
+            try:
+                Host.objects.get(social_link=link.strip())
+            except Host.DoesNotExist:
+                raise serializers.ValidationError({'social_link': 'link already exists'})    
+        return validated_data
+
+    def update(self, instance, validated_data):
+        bio = validated_data.get("bio")
+        address = validated_data.get("address")
+        identity = validated_data.get("identity")
+        social_link = validated_data.get("social_link")
+        profile_photo = validated_data.get("profile_photo")
+        if bio.strip() == instance.bio and address.strip() == instance.address and identity.strip() == instance.id and social_link.strip() == instance.social_link and profile_photo.strip() == instance.profile_photo:
+            raise serializers.ValidationError("Nothing to update.")
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value.strip())
+        instance.updated_at = datetime.today()
+        instance.save()
+        return instance
+     
+class PropertySerializer(serializers.Serializer):
+    property_id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(trim_whitespace=True)
+    description = serializers.CharField(trim_whitespace=True)
+    location = serializers.CharField(trim_whitespace=True)
+    pricepernight = serializers.DecimalField(max_digits=10, decimal_places=2)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    def create(self, validated_data):
+        return validated_data
+    
+    def update(self, instance, validated_data):
+        name = validated_data['name']
+        description = validated_data['description']
+        location = validated_data['location']
+        pricepernight = validated_data['pricepernight']
+        if name.title()==instance.name and description==instance.description and location.title()==instance.location and pricepernight==instance.pricepernight:
+            raise serializers.ValidationError({'Nothing to update'})
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.updated_at = datetime.today()
+        instance.save
+        return instance
+    
 class BookingSerializer(serializers.ModelSerializer):
     property_id = serializers.UUIDField()
     start_date = serializers.DateField()
@@ -45,23 +100,4 @@ class BookingSerializer(serializers.ModelSerializer):
         return value
     
     def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
-
-class PropertySerializer(serializers.ModelSerializer):
-    property_id = serializers.UUIDField(read_only=True)
-    user = serializers.UUIDField(read_only=True)
-    bookings = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Property
-        fields = '__all__'
-    
-    def validate_user(self, value):
-        return value.first_name
-    
-    def get_bookings(self, obj):
-        return BookingSerializer(obj.bookings.all(), many=True).data
-    
-    def update(self, instance, validated_data):
-        instance.updated_at = datetime.today()
         return super().update(instance, validated_data)

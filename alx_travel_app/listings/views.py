@@ -69,6 +69,7 @@ def Verify_signup_token(request):
         return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST, template_name="listings/invalid_email.html")
     user.verified=True
     user.save(update_fields=["verified"])
+    cache.set(f"user_profile_{user.user_id}", user)
     return Response({"success": "Email has been verified successfully"}, status=status.HTTP_200_OK, template_name="listings/valid_email.html")
 
 class LoginApiView(APIView):
@@ -142,8 +143,8 @@ class ModifyUserViewset(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         admin_user = request.user
         user_id = kwargs.get("id", None)
-        # if not admin_user.is_superuser:
-        #     return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        if not admin_user.is_superuser:
+            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
         if not admin_user.is_active:
             return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         if not admin_user.verified:
@@ -161,9 +162,9 @@ class ModifyUserViewset(viewsets.ModelViewSet):
         if not user.is_active:
             return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
         
-        # user.is_active = False
-        # user.save(update_fields=["is_active"])
-        # Token.objects.filter(user=user).delete()
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        Token.objects.filter(user=user).delete()
         email_verification.delay(subject="Account Deactivation", email=user.email, txt_template_name="listings/text_mails/deactivate.txt", verification_url=f"{user.first_name} {user.last_name}")
         return Response({'error': f"{user.first_name} {user.last_name}'s account has been deactivated successfully by {admin_user.first_name}"})
 
@@ -178,35 +179,45 @@ class UserProfileViewset(viewsets.ModelViewSet):
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         user_profile = f"user_profile_{request.user.user_id}"
-        get_user_cached_data = cache.get(user_profile)
-
-        if get_user_cached_data is None:
+        get_user = cache.get(user_profile)
+        if get_user is None:
             cache.set(user_profile, request.user)
-
-        serializer = self.serializer_class(get_user_cached_data)
+            get_user = request.user
+        serializer = self.serializer_class(get_user)
         return Response(serializer.data, status=status.HTTP_200_OK) 
   
     def update(self, request, *args, **kwargs):
-        if not request.user.is_active:
+        user_profile = f"user_profile_{request.user.user_id}"
+        get_user = cache.get(user_profile)
+        if not get_user:
+            cache.set(f"user_profile_{request.user.user_id}", request.user)
+            get_user = request.user
+        if not get_user.is_active:
             return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
-        if not request.user.verified:
+        if not get_user.verified:
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
-        serializer = self.serializer_class(instance=request.user, data=request.data, partial=True)
+        
+        serializer = self.serializer_class(instance=get_user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         if user.pending_email is not None:
             token = get_token(user_id=user.user_id, email=user.pending_email)
-            email_verification(subject="Update Email account", email=user.pending_email,
+            email_verification.delay(subject="Update Email account", email=user.pending_email,
                                txt_template_name="listings/text_mails/update_email.txt", 
                                verification_url=f"{os.environ.get('APP_DOMAIN')}/verify_update?token={token}")
             return Response({"message": "Please check your email for verification"}, status=status.HTTP_200_OK)
         return Response({"success": "Profile has been updated successfully"}, status=status.HTTP_200_OK)
     
     def destroy(self, request, *args, **kwargs):
-        if not request.user.is_active:
+        user_profile = f"user_profile_{request.user.user_id}"
+        get_user = cache.get(user_profile)
+        if not get_user:
+            cache.set(f"user_profile_{request.user.user_id}", request.user)
+            get_user = request.user
+        if not get_user.is_active:
             return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
-        token = get_token(user_id=request.user.user_id, email=request.user.email)
-        email_verification(subject="Deactivate account?", email=request.user.email,
+        token = get_token(user_id=get_user.user_id, email=get_user.email)
+        email_verification(subject="Deactivate account?", email=get_user.email,
                                txt_template_name="listings/text_mails/deactivate_confirmation.txt", 
                                verification_url=f"{os.environ.get('APP_DOMAIN')}/deactivate_acct_verify?token={token}")
         return Response({"message": "Please check your email for verification"}, status=status.HTTP_200_OK)
@@ -337,9 +348,14 @@ class Change_passwordView(APIView):
     http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
-        if not request.user.is_active:
+        user_profile = f"user_profile_{request.user.user_id}"
+        get_user = cache.get(user_profile)
+        if not get_user:
+            cache.set(f"user_profile_{request.user.user_id}", request.user)
+            get_user = request.user
+        if not get_user.is_active:
             return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
-        if not request.user.verified:
+        if not get_user.verified:
             return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         serializer = self.serializer_class(data=request.data)
@@ -358,31 +374,45 @@ class LogoutView(APIView):
     http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
-        Token.objects.get(user=request.user).delete()
+        user_profile = f"user_profile_{request.user.user_id}"
+        get_user = cache.get(user_profile)
+        if not get_user:
+            cache.set(f"user_profile_{request.user.user_id}", request.user)
+            get_user = request.user
+        Token.objects.get(user=get_user).delete()
         return Response({"success": "Logout successfully"}, status=status.HTTP_200_OK)
     
 class PropertyViewset(viewsets.ModelViewSet):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
     http_method_names = ["get", "post", "patch", "put", "delete"]
     serializer_class = PropertySerializer
-    queryset = Property.objects.select_related('user').all()
+    # queryset = Property.objects.select_related('user').all()
+    def get_queryset(self):
+        properties = cache.get("properties")
+        if not properties:
+            all_properties = list(Property.objects.values('property_id', 'name', 'description', 'location', 'pricepernight'))
+            cache.set(properties)
+        return 
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        user_profile = f"user_profile_{request.user.user_id}"
+        get_user = cache.get(user_profile)
+        if get_user is None:
+            cache.set(user_profile, request.user)
+            get_user = request.user
+        if get_user.role == "guest":
+            return Response({"error": "You cannot perform this account with a guest acccount, fill the host form"}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = request.user
-        name = serializer.validated_data.get('name')
-        description = serializer.validated_data.get('description')
-        location = serializer.validated_data.get('location')
-        pricepernight = serializer.validated_data.get('pricepernight')
+        name = serializer.validated_data['name']
+        description = serializer.validated_data['description']
+        location = serializer.validated_data['location']
+        pricepernight = serializer.validated_data['pricepernight']
         property = Property.objects.create(
-                                user=user, name=name,
+                                user=get_user, name=name,
                                 description=description, 
-                                location=location, pricepernight=pricepernight
-                            )
-        serializer = self.get_serializer(property)
-        return Response(data=serializer.data, status=status.HTTP_201_CREATED)
+                                location=location, pricepernight=pricepernight)
+        serializer = self.serializer_class(property)
+        return Response(data=serializer.data, status=status.HTTP_200_OK)
     
     def list(self, request, *args, **kwargs):
         print(request.user.role)
