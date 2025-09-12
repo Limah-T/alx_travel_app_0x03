@@ -84,7 +84,7 @@ class Property(models.Model):
 
 class Booking(models.Model):
     booking_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    property_id = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings')  
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings')  
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')  
     start_date = models.DateField()
     end_date = models.DateField()
@@ -99,7 +99,7 @@ class Booking(models.Model):
 class Review(models.Model):
     review_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='reviews')  
-    user_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')  
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')  
     rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)], default=0)
     comment = models.TextField(null=False, blank=False)
     created_at = models.DateTimeField(auto_now_add=True)
