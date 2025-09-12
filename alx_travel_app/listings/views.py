@@ -123,15 +123,15 @@ class ModifyUserViewset(viewsets.ModelViewSet):
         if not admin_exist:
             return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
         checking = check_if_is_admin(admin_exist)
-        if not checking:
-            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
+        # if not checking:
+        #     return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.serializer_class(self.get_queryset(), many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def retrieve(self, request, *args, **kwargs):
         admin_exist = check_single_user_in_cache_db(request.user.user_id)
-        if not admin_exist:
-            return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+        # if not admin_exist:
+        #     return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
         checking = check_if_is_admin(admin_exist)
         if not checking:
             return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)      
