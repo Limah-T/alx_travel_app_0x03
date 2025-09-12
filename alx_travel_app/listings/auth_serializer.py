@@ -20,8 +20,9 @@ class UserSerializer(serializers.Serializer):
             raise serializers.ValidationError({'email': 'this field is required.'})
         if attrs.get("phone_number") is None:
             raise serializers.ValidationError({'phone_number': 'this field is required.'})
-        if len(attrs.get("password")) < 8:
-            raise serializers.ValidationError({'password': 'password must not be less than 8.'})
+        if attrs.get("password") is not None:
+            if len(attrs.get("password")) < 8:
+                raise serializers.ValidationError({'password': 'password must not be less than 8.'})
         return super().validate(attrs) 
 
     def create(self, validated_data):
@@ -92,6 +93,8 @@ class SetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({'email':'This field may not be blank!'})
         if new_password is None:
             raise serializers.ValidationError({'new_password':'This field may not be blank!'})
+        if len(new_password.strip()) < 8:
+            raise serializers.ValidationError({'new_password':'Password length must be more than 8.'})
         try:
             user = User.objects.get(email=email.lower())
         except User.DoesNotExist:
@@ -99,7 +102,6 @@ class SetPasswordSerializer(serializers.Serializer):
         user_data = {'user': user, 'new_password': new_password}
         self.context['user_data'] = user_data
         return self.context
-
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField()
