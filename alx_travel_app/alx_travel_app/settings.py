@@ -2,7 +2,7 @@ from pathlib import Path
 import environ, os, smtplib, ssl, certifi
 
 env = environ.Env(
-    DEBUG=(bool, True)
+    DEBUG=(bool, False)
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -11,9 +11,9 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = env('SECRET_KEY')
 
-DEBUG = True
+DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [host.strip() for host in env('ALLOWED_HOSTS').split(',')]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -144,6 +144,7 @@ CACHES = {
     }
 }
 
+# drf-spectacular settings
 SPECTACULAR_SETTINGS = {
     "TITLE": "Property App",
     "DESCRIPTION": "API documentation",
@@ -165,3 +166,82 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
+# Logging configuration
+
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "file": {
+            "level": "INFO",
+            "class": "logging.FileHandler",
+            "filename": os.path.join(LOG_DIR, "django.log"),  # main log file
+            "formatter": "verbose",
+        },
+        "security_file": {
+            "level": "WARNING",
+            "class": "logging.FileHandler",
+            "filename": os.path.join(LOG_DIR, "security.log"),  # security log
+            "formatter": "verbose",
+        },
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["file", "console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        "django.security": {
+            "handlers": ["security_file", "console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+# Security Header settings for production
+if not DEBUG:
+    # Force HTTPS everywhere
+    SECURE_SSL_REDIRECT = True  
+
+    # Tell browsers "only use HTTPS for this site"
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+    # Basic browser protections
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+
+    # Content Security Policy (limits where resources can load from)
+    CSP_DEFAULT_SRC = ("'self'",)
+    CSP_STYLE_SRC = ("'self'", "'unsafe-inline'",)
+    CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'",)
+    CSP_IMG_SRC = ("'self'", "data:", "https:")
+    CSP_FONT_SRC = ("'self'", "https:", "data:")
+    CSP_CONNECT_SRC = ("'self'", "https:")
+
+# CORS (if you use APIs)
+# CORS_ALLOWED_ORIGINS = [
+#     "https://frontend.com",
+# ]
