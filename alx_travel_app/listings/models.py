@@ -120,7 +120,7 @@ class Payment(models.Model):
     transaction_id = models.CharField(max_length=255, unique=True)
 
 class Host(models.Model):
-    host = models.OneToOneField(User, on_delete=models.CASCADE, related_name='host')
+    host = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     bio = models.TextField(null=False, blank=False)
     address = models.CharField(max_length=100, null=False, blank=False)
     identity = models.CharField(max_length=50, null=False, blank=False)
