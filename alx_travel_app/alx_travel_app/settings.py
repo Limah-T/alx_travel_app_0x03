@@ -13,7 +13,7 @@ SECRET_KEY = env('SECRET_KEY')
 
 DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'listings',
     'rest_framework',
     'rest_framework.authtoken',
+    'drf_spectacular',
     # 'django_celery_results',
 ]
 
@@ -110,6 +111,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'alx_travel_app.listings.exception_handler.custom_exception_handler'
 }
 
 # Email configuration

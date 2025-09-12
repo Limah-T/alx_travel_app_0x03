@@ -80,6 +80,10 @@ class Property(models.Model):
             self.name = self.name.strip().title()
         if self.location:
             self.location = self.location.strip().title()
+        if self.description:
+            self.description = self.description.strip()
+        if self.pricepernight:
+            self.pricepernight = self.pricepernight.strip()
         super().save(*args, **kwargs)
 
 class Booking(models.Model):
@@ -114,3 +118,32 @@ class Payment(models.Model):
         ('pending', 'Pending')
     ], default='pending')
     transaction_id = models.CharField(max_length=255, unique=True)
+
+class Host(models.Model):
+    host = models.OneToOneField(User, on_delete=models.CASCADE, related_name='host')
+    bio = models.TextField(null=False, blank=False)
+    address = models.CharField(max_length=100, null=False, blank=False)
+    identity = models.CharField(max_length=50, null=False, blank=False)
+    social_link = models.CharField(max_length=255, null=True, blank=True)
+    verification_status = models.CharField(max_length=8, choices=[
+                                    ('verified', 'Verified'),
+                                    ('rejected', 'Rejected'),
+                                    ('pending', 'Pending')
+                                    ], default='pending')
+    profile_photo = models.CharField(max_length=255, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.bio:
+            self.bio = self.bio.strip()
+        if self.address:
+            self.address = self.address.strip()
+        if self.id:
+            self.id = self.id.strip()
+        if self.social_link:
+            self.social_link = self.social_link.strip()
+        if self.profile_photo:
+            self.profile_photo.strip()
+        super().save(*args, **kwargs)
+
+    
