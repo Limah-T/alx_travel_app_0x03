@@ -4,7 +4,6 @@ from rest_framework import status
 
 # Map error codes to friendly messages
 messages = {
-    status.HTTP_400_BAD_REQUEST: "Invalid request. Please check your input.",
     status.HTTP_401_UNAUTHORIZED: "Authentication required. Please log in to get a token.",
     status.HTTP_403_FORBIDDEN: "You don’t have permission to perform this action.",
     status.HTTP_404_NOT_FOUND: "The resource you are looking for does not exist.",

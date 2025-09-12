@@ -15,11 +15,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import authentication_classes, permission_classes, api_view, renderer_classes
 
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+
+from .utils.helper_functions import check_if_is_admin, check_single_user_in_cache_db
 from .serializers import PropertySerializer, BookingSerializer
-from .auth import UserSerializer, LoginSerializer, ResetPasswordSerializer, SetPasswordSerializer, ChangePasswordSerializer
+from .auth_serializer import UserSerializer, LoginSerializer, ResetPasswordSerializer, SetPasswordSerializer, ChangePasswordSerializer
 from .models import Property, Booking, User, Payment
 from .tasks import email_verification
-from .tokens import get_token, decode_token
+from .utils.tokens import get_token, decode_token
 from dotenv import load_dotenv
 import os, requests, uuid
 
@@ -32,7 +36,6 @@ class UserApiView(APIView):
     serializer_class = UserSerializer
     
     def post(self, request, *args, **kwargs):
-        # User.objects.all().delete()
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -45,7 +48,16 @@ class UserApiView(APIView):
             verification_url=f"{os.environ.get('APP_DOMAIN')}/verify?token={token}"
         )
         return Response({"message": "please check your email for verification."}, status=status.HTTP_200_OK)
-    
+
+@extend_schema(methods=["GET"], request=None,
+    parameters=[
+        OpenApiParameter("token", str, OpenApiParameter.QUERY, True, description="Deactivation token")
+    ],
+    responses={
+        200: OpenApiResponse(description="Account deactivated successfully"),
+        400: OpenApiResponse(description="Invalid or expired token / bad credentials"),
+    }
+)
 @api_view(["get"])
 @authentication_classes([])
 @permission_classes([])
@@ -91,10 +103,10 @@ class LoginApiView(APIView):
         if not user.is_active:
             return Response({"error": "User's account has been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
         token, _ = Token.objects.get_or_create(user=user)
+        cache.set(f"user_profile_{user.user_id}", user)
         return Response({'token': token.key}, status=status.HTTP_200_OK)
     
 class ModifyUserViewset(viewsets.ModelViewSet):
-    # permissson_classes allowed are IsAuthenticated and IsAdminUser
     serializer_class = UserSerializer
     lookup_field = "uuid"
 
@@ -105,70 +117,56 @@ class ModifyUserViewset(viewsets.ModelViewSet):
             cache.set("users", all_users)
             users = all_users
         return users
-    
+
     def list(self, request, *args, **kwargs):
-        user = request.user
-        if not user.is_superuser:
-            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
-        if not user.is_active:
-            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
-        if not user.verified:
-            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
-        
+        admin_exist = check_single_user_in_cache_db(request.user.user_id)
+        if not admin_exist:
+            return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+        checking = check_if_is_admin(admin_exist)
+        # if not checking:
+        #     return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.serializer_class(self.get_queryset(), many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
     def retrieve(self, request, *args, **kwargs):
-        admin_user = request.user
-        user_id = kwargs.get("id", None)
-        if not admin_user.is_superuser:
-            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
-        if not admin_user.is_active:
-            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
-        if not admin_user.verified:
-            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
-        if not user_id:
-            return Response({'error': 'User ID is missing'}, status=status.HTTP_400_BAD_REQUEST)
-        single_user = cache.get(f"user_profile_{user_id}")
-        if single_user is None:
-            try:
-                user_ = User.objects.get(user_id=user_id)
-                cache.set(f"user_profile_{user_id}", user_)
-                single_user = user_
-            except User.DoesNotExist:
-                return Response({"error": "User does not exist."}, status=status.HTTP_400_BAD_REQUEST)        
-        serializer = self.serializer_class(single_user)
+        admin_exist = check_single_user_in_cache_db(request.user.user_id)
+        # if not admin_exist:
+        #     return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+        checking = check_if_is_admin(admin_exist)
+        if not checking:
+            return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)      
+        user_uuid = kwargs.get("uuid")
+
+        if user_uuid is None:
+            return Response({'error': 'User UUID is missing'}, status=status.HTTP_400_BAD_REQUEST)
+        user = check_single_user_in_cache_db(user_uuid)
+        if not user:
+            return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.serializer_class(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
     def destroy(self, request, *args, **kwargs):
-        admin_user = request.user
-        user_id = kwargs.get("id", None)
-        if not admin_user.is_superuser:
+        admin_exist = check_single_user_in_cache_db(request.user.user_id)
+        if not admin_exist:
+            return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+        checking = check_if_is_admin(admin_exist)
+        if not checking:
             return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
-        if not admin_user.is_active:
-            return Response({'error': "User's account as been deactivated"}, status=status.HTTP_400_BAD_REQUEST)
-        if not admin_user.verified:
-            return Response({'error': "User's account has not been verified"}, status=status.HTTP_400_BAD_REQUEST)
-        if not user_id:
-            return Response({'error': 'User ID is missing'}, status=status.HTTP_400_BAD_REQUEST)
-        user = cache.get(f"user_profile_{user_id}")
-        if user is None:
-            try:
-                user = User.objects.get(user_id=user_id)
-                cache.set(f"user_profile_{user_id}", user)
-                user = user
-            except User.DoesNotExist:
-                return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
-        if not user.is_active:
-            return Response({"error": "User's account has been deactivated before now!"}, status=status.HTTP_400_BAD_REQUEST)
-        
+        user_uuid = kwargs.get("uuid")
+        if user_uuid is None:
+            return Response({'error': 'User UUID is missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = check_single_user_in_cache_db(user_uuid)
+        if not user:
+            return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
         user.is_active = False
         user.save(update_fields=["is_active"])
         Token.objects.filter(user=user).delete()
-        email_verification.delay(subject="Account Deactivation", email=user.email, txt_template_name="listings/text_mails/deactivate.txt", verification_url=f"{user.first_name} {user.last_name}")
-        return Response({'error': f"{user.first_name} {user.last_name}'s account has been deactivated successfully by {admin_user.first_name}"})
+        email_verification.delay(subject="Account Deactivation", email=user.email,
+            txt_template_name="listings/text_mails/deactivate.txt",verification_url=f"{user.first_name} {user.last_name}")
+        return Response({'message': f"{user.first_name} {user.last_name}'s account has been deactivated successfully by {admin_exist.first_name}"},
+            status=status.HTTP_200_OK)
 
-    
 class UserProfileViewset(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
@@ -222,6 +220,14 @@ class UserProfileViewset(viewsets.ModelViewSet):
                                verification_url=f"{os.environ.get('APP_DOMAIN')}/deactivate_acct_verify?token={token}")
         return Response({"message": "Please check your email for verification"}, status=status.HTTP_200_OK)
 
+@extend_schema(methods=["GET"], request=None,
+    parameters=[
+        OpenApiParameter("token", str, OpenApiParameter.QUERY, True, description="Deactivation token")
+    ],
+    responses={
+        200: OpenApiResponse(description="Account deactivated successfully"),
+        400: OpenApiResponse(description="Invalid or expired token / bad credentials"),
+    })
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([])
@@ -244,6 +250,15 @@ def VerifyEmailUpdate(request):
     user.confirm_pending_email()
     return Response({"success": "Email has been verified successfully"}, status=status.HTTP_200_OK, template_name="listings/valid_email.html")
 
+@extend_schema(methods=["GET"], request=None,
+    parameters=[
+        OpenApiParameter("token", str, OpenApiParameter.QUERY, True, description="Deactivation token")
+    ],
+    responses={
+        200: OpenApiResponse(description="Account deactivated successfully"),
+        400: OpenApiResponse(description="Invalid or expired token / bad credentials"),
+    }
+)
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([])
@@ -292,7 +307,15 @@ class ResetPassword(APIView):
             subject="Reset Password", email=user.email, txt_template_name="listings/text_mails/reset_password_confirm.txt", verification_url=f"{os.environ.get('APP_DOMAIN')}/reset_password_verify?token={token}"
         )
         return Response({"message": "Please check your message for verification."}, status=status.HTTP_200_OK)
-    
+
+@extend_schema(methods=["GET"], request=None,
+    parameters=[
+        OpenApiParameter("token", str, OpenApiParameter.QUERY, True, description="Deactivation token")
+    ],
+    responses={
+        200: OpenApiResponse(description="Account deactivated successfully"),
+        400: OpenApiResponse(description="Invalid or expired token / bad credentials"),
+    })
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([])
@@ -372,6 +395,7 @@ class Change_passwordView(APIView):
 
 class LogoutView(APIView):
     http_method_names = ["post"]
+    serializer_class = None  # avoids guessing for swaggerAPI
 
     def post(self, request, *args, **kwargs):
         user_profile = f"user_profile_{request.user.user_id}"

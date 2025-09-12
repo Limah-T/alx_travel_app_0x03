@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Property, Booking, User, Host
-from .auth import UserSerializer
+from .auth_serializer import UserSerializer
 from datetime import datetime
 
 def check_date(value):

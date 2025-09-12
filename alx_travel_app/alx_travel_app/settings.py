@@ -11,7 +11,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = env('SECRET_KEY')
 
-DEBUG = env('DEBUG')
+DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -112,7 +112,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'EXCEPTION_HANDLER': 'alx_travel_app.listings.exception_handler.custom_exception_handler'
+    # 'EXCEPTION_HANDLER': 'listings.utils.exception_handler.custom_exception_handler'
 }
 
 # Email configuration
@@ -143,3 +143,25 @@ CACHES = {
         "TIMEOUT": None,   # cache forever by default
     }
 }
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Property App",
+    "DESCRIPTION": "API documentation",
+    "VERSION": "1.0.0",
+
+    "SERVERS": [{"url": "/"}],
+
+    "SECURITY": [
+        {"TokenAuth": []},
+    ],
+
+    "SECURITY_SCHEMES": {
+        "TokenAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "Token",
+            "description": "Token-based authentication. Enter only the token value, Swagger will add the 'Token' prefix automatically.",
+        },
+    },
+}
+
