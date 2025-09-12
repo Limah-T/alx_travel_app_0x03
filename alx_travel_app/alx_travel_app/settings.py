@@ -12,8 +12,10 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = env('SECRET_KEY')
 
 DEBUG = env('DEBUG')
-
-ALLOWED_HOSTS = [host.strip() for host in env('ALLOWED_HOSTS').split(',')]
+if DEBUG:
+    ALLOWED_HOSTS = []
+else:
+    ALLOWED_HOSTS = [env('PROD_ALLOWED_HOSTS')]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
