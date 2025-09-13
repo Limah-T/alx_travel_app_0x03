@@ -222,27 +222,27 @@ LOGGING = {
 }
 
 # Security Header settings for production
-# if not DEBUG:
-#     # Force HTTPS everywhere
-#     SECURE_SSL_REDIRECT = True  
+if not DEBUG:
+    # Force HTTPS everywhere
+    SECURE_SSL_REDIRECT = True  
 
-#     # Tell browsers "only use HTTPS for this site"
-#     SECURE_HSTS_SECONDS = 31536000  # 1 year
-#     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-#     SECURE_HSTS_PRELOAD = True
+    # Tell browsers "only use HTTPS for this site"
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
-#     # Basic browser protections
-#     SECURE_BROWSER_XSS_FILTER = True
-#     SECURE_CONTENT_TYPE_NOSNIFF = True
-#     X_FRAME_OPTIONS = "DENY"
+    # Basic browser protections
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
 
-#     # Content Security Policy (limits where resources can load from)
-#     CSP_DEFAULT_SRC = ("'self'",)
-#     CSP_STYLE_SRC = ("'self'", "'unsafe-inline'",)
-#     CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'",)
-#     CSP_IMG_SRC = ("'self'", "data:", "https:")
-#     CSP_FONT_SRC = ("'self'", "https:", "data:")
-#     CSP_CONNECT_SRC = ("'self'", "https:")
+    # Content Security Policy (limits where resources can load from)
+    CSP_DEFAULT_SRC = ("'self'",)
+    CSP_STYLE_SRC = ("'self'", "'unsafe-inline'",)
+    CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'",)
+    CSP_IMG_SRC = ("'self'", "data:", "https:")
+    CSP_FONT_SRC = ("'self'", "https:", "data:")
+    CSP_CONNECT_SRC = ("'self'", "https:")
 
 # CORS (if you use APIs)
 # CORS_ALLOWED_ORIGINS = [

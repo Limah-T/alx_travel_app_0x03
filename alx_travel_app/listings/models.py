@@ -67,10 +67,21 @@ class User(AbstractUser):
     
 class Property(models.Model):
     property_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties')  #
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties')  
+    slug = models.SlugField(unique=True, null=True, blank=True)
     name = models.CharField(max_length=255, null=False, blank=False)
     description = models.TextField(null=False, blank=False)
     location = models.CharField(max_length=255, null=False, blank=False)
+    status = models.CharField(max_length=11, choices=[
+        ('available', 'Available'),
+        ('unavailable', 'Unavailable'),
+        ('booked', 'Booked')
+    ], default='available')
+    verification = models.CharField(max_length=10, choices=[
+        ('verified', 'Verified'),
+        ('pending', 'Pending'),
+        ('rejected', 'Rejected')
+    ], default='pending')
     pricepernight = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -82,8 +93,9 @@ class Property(models.Model):
             self.location = self.location.strip().title()
         if self.description:
             self.description = self.description.strip()
-        if self.pricepernight:
-            self.pricepernight = self.pricepernight.strip()
+        if self.slug:
+            slug = f"{self.name.replace(' ', '-')}_{self.host}"
+            self.slug = slug.strip().lower()
         super().save(*args, **kwargs)
 
 class Booking(models.Model):
@@ -120,7 +132,7 @@ class Payment(models.Model):
     transaction_id = models.CharField(max_length=255, unique=True)
 
 class Host(models.Model):
-    host = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    host = models.UUIDField(default=None, unique=True)
     bio = models.TextField(null=False, blank=False)
     address = models.CharField(max_length=100, null=False, blank=False)
     identity = models.CharField(max_length=50, null=False, blank=False)
@@ -131,6 +143,7 @@ class Host(models.Model):
                                     ('pending', 'Pending')
                                     ], default='pending')
     profile_photo = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
@@ -138,12 +151,14 @@ class Host(models.Model):
             self.bio = self.bio.strip()
         if self.address:
             self.address = self.address.strip()
-        if self.id:
-            self.id = self.id.strip()
+        if self.identity:
+            self.identity = self.identity.strip()
         if self.social_link:
             self.social_link = self.social_link.strip()
         if self.profile_photo:
-            self.profile_photo.strip()
+            self.profile_photo = self.profile_photo.strip()
+        if self.verification_status:
+            self.verification_status = self.verification_status.strip().lower()
         super().save(*args, **kwargs)
 
     

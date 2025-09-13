@@ -136,8 +136,8 @@ class ModifyUserViewset(viewsets.ModelViewSet):
         checking = check_if_is_admin(admin_exist)
         if not checking:
             return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)      
-        user_uuid = kwargs.get("uuid")
 
+        user_uuid = kwargs.get("uuid")
         if user_uuid is None:
             return Response({'error': 'User UUID is missing'}, status=status.HTTP_400_BAD_REQUEST)
         user = check_single_user_in_cache_db(user_uuid)
