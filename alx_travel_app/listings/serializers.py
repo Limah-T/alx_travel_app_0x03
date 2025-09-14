@@ -1,22 +1,19 @@
-import attr
 from rest_framework import serializers
-from .models import Property, Booking, User, Host
-from .auth_serializer import UserSerializer
+from .models import Host
 from datetime import datetime
 
 def check_date(value):
     now = datetime.now().date()
     time_input = datetime.strptime(str(value), '%Y-%m-%d').date()
-    print(time_input)
     if time_input != now or time_input > now:
         return True
     return False
 
 class PropertySerializer(serializers.Serializer):
     property_id = serializers.UUIDField(read_only=True)
-    name = serializers.CharField(trim_whitespace=True)
+    name = serializers.CharField(max_length=255, trim_whitespace=True)
     description = serializers.CharField(trim_whitespace=True)
-    location = serializers.CharField(trim_whitespace=True)
+    location = serializers.CharField(max_length=255, trim_whitespace=True)
     pricepernight = serializers.DecimalField(max_digits=10, decimal_places=2)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)

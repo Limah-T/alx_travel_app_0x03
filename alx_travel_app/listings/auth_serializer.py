@@ -1,25 +1,15 @@
 from rest_framework import serializers
-from django.contrib.auth import authenticate
-
 from .models import User
 
 class UserSerializer(serializers.Serializer):
     user_id = serializers.UUIDField(read_only=True)
-    first_name = serializers.CharField(trim_whitespace=True)
-    last_name = serializers.CharField(trim_whitespace=True)
-    email = serializers.EmailField(trim_whitespace=True)
-    phone_number = serializers.CharField(trim_whitespace=True)
+    first_name = serializers.CharField(max_length=30, trim_whitespace=True)
+    last_name = serializers.CharField(max_length=30, trim_whitespace=True)
+    email = serializers.EmailField(max_length=255, trim_whitespace=True)
+    phone_number = serializers.CharField(max_length=15, trim_whitespace=True)
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        if attrs.get("first_name") is None:
-            raise serializers.ValidationError({'first_name': 'this field is required.'})
-        if attrs.get("last_name") is None:
-            raise serializers.ValidationError({'last_name': 'this field is required.'})
-        if attrs.get("email") is None:
-            raise serializers.ValidationError({'email': 'this field is required.'})
-        if attrs.get("phone_number") is None:
-            raise serializers.ValidationError({'phone_number': 'this field is required.'})
         if attrs.get("password") is not None:
             if len(attrs.get("password")) < 8:
                 raise serializers.ValidationError({'password': 'password must not be less than 8.'})
@@ -37,10 +27,10 @@ class UserSerializer(serializers.Serializer):
         return user
     
     def update(self, instance, validated_data):
-        email = validated_data["email"]
-        phone_number = validated_data["phone_number"]
-        first_name = validated_data["first_name"]
-        last_name = validated_data["last_name"]
+        email = validated_data.get("email", instance.email)
+        phone_number = validated_data.get("phone_number", instance.phone_number)
+        first_name = validated_data.get("first_name", instance.first_name)
+        last_name = validated_data.get("last_name", instance.last_name)
         if email.lower() == instance.email and phone_number == instance.phone_number and first_name.title() == instance.first_name and last_name.title() == instance.last_name:
             raise serializers.ValidationError("Nothing to update.")
                   
@@ -52,8 +42,6 @@ class UserSerializer(serializers.Serializer):
             if User.objects.exclude(user_id=instance.user_id).filter(email=email.lower()).exists():
                 raise serializers.ValidationError({"email": "Email in use."})
             instance.pending_email = email
-        instance.first_name = first_name
-        instance.last_name = last_name
         instance.save()
         return instance
         

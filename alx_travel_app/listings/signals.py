@@ -2,6 +2,8 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, Host, Property
 from django.core.cache import cache
+import logging
+logger = logging.getLogger(__name__)
 
 def update_cache(instance, instance_key, key, queryset):
     """Utility to refresh cache for a model"""
@@ -26,7 +28,7 @@ def update_user_cache(sender, instance, **kwargs):
         key="users",
         queryset=User.objects.filter(is_active=True, verified=True)
         )
-        print(f"Cache updated for user_profile, and all users.")
+        logging.error(f"Cache updated for user_profile, and all users.")
 
 @receiver(post_save, sender=Host)
 def update_host_cache(sender, instance, **kwargs):
@@ -37,7 +39,7 @@ def update_host_cache(sender, instance, **kwargs):
         key="hosts",
         queryset=Host.objects.all()
     )
-    print(f"Cache updated for host_profile, and all hosts.")
+    logging.error(f"Cache updated for host_profile, and all hosts.")
 
 @receiver(post_delete, sender=User)
 def delete_user_cache(sender, instance, **kwargs):
@@ -47,7 +49,7 @@ def delete_user_cache(sender, instance, **kwargs):
         key="users",
         queryset=User.objects.filter(is_active=True, verified=True)
     )
-    print("Deleted cache for user_profile, and updated all users")
+    logging.error("Deleted cache for user_profile, and updated all users")
 
 @receiver(post_delete, sender=Host)
 def delete_host_cache(sender, instance, **kwargs):
@@ -57,7 +59,7 @@ def delete_host_cache(sender, instance, **kwargs):
         key="hosts",
         queryset=Host.objects.all()
     )
-    print("Deleted cache for host_profile, and updated all hosts")
+    logging.error("Deleted cache for host_profile, and updated all hosts")
 
 @receiver(post_save, sender=Property)
 def update_property_cache(sender, instance, **kwargs):
@@ -68,7 +70,7 @@ def update_property_cache(sender, instance, **kwargs):
         key="properties",
         queryset=Property.objects.filter(verification='verified')
     )
-    print(f"Cache updated for property_{instance.property_id}, and all properties.")
+    logging.error(f"Cache updated for property_{instance.property_id}, and all properties.")
 
 @receiver(post_delete, sender=Property)
 def delete_property_cache(sender, instance, **kwargs):
@@ -78,4 +80,4 @@ def delete_property_cache(sender, instance, **kwargs):
         key="properties",
         queryset=Property.objects.filter(status='verified')
     )
-    print(f"Deleted cache for property_{instance.property_id}, and updated all properties.")
+    logging.error(f"Deleted cache for property_{instance.property_id}, and updated all properties.")

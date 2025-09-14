@@ -1,11 +1,10 @@
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
-from django.core.mail import send_mail
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from django.template.loader import render_to_string
-from django.conf import settings
-import os, smtplib, ssl
+import os, smtplib, ssl, logging
+
+logger = logging.getLogger(__name__)
 
 host = os.environ.get("EMAIL_HOST")
 port = int(os.environ.get("EMAIL_PORT"))
@@ -27,7 +26,7 @@ def email_verification(self, subject, email, txt_template_name, verification_url
             server.login(sender_email, password)
             server.sendmail(sender_email, email, msg.as_string())
     except Exception as exc:
-        print("Error retrying..", exc)
+        logger.error("Error retrying..", exc)
         raise self.retry(exc=exc)
 
     

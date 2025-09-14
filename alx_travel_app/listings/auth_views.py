@@ -27,8 +27,6 @@ from .utils.tokens import get_token, decode_token
 from dotenv import load_dotenv
 import os, requests, uuid
 
-load_dotenv(override=True)
-
 class UserApiView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -40,7 +38,6 @@ class UserApiView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         token = get_token(user_id=user.user_id, email=user.email)
-        print(f"{os.environ.get('APP_DOMAIN')}/verify?token={token}")
         email_verification.delay_on_commit(
             subject="Email Verification",
             email=user.email,
@@ -158,7 +155,6 @@ class ModifyUserViewset(viewsets.ModelViewSet):
             return Response({'error': 'User UUID is missing'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = check_single_user_in_cache_db(user_uuid)
-        print(user.user_id, user.email, user.is_active)
         if user == False:
             return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
         user.is_active = False
@@ -177,7 +173,6 @@ class UserProfileViewset(viewsets.ModelViewSet):
         user = check_single_user_in_cache_db(request.user.user_id)
         if not user:
             return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
-        print(user.pending_email)
         serializer = self.serializer_class(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

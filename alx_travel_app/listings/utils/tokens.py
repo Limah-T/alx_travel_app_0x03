@@ -1,5 +1,7 @@
-import jwt, os
+import jwt, os, logging
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)  
 
 def expiration_time():
     expiry_time = datetime.now() + timedelta(minutes=5)
@@ -26,20 +28,20 @@ def decode_token(token):
         payload = jwt.decode(token, key=key, algorithms=[os.environ.get("ALGORITHM")])
         return payload
     except jwt.ExpiredSignatureError:
-        print("Token expired")
+        logger.error("Token expired")
         return False
     except jwt.InvalidSignatureError:
-        print("Invalid signature")
+        logger.error("Invalid signature")
         return False
     except jwt.InvalidIssuerError:
-        print("Invalid issuer")
+        logger.error("Invalid issuer")
         return False
     except jwt.InvalidAudienceError:
-        print("Invalid audience")
+        logger.error("Invalid audience")
         return False
     except jwt.DecodeError:
-        print("Malformed token")
+        logger.error("Malformed token")
         return False
     except jwt.InvalidTokenError:
-        print("Invalid token")
+        logger.error("Invalid token")
         return False

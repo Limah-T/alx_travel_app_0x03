@@ -39,6 +39,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'listings.utils.middleware.IPTrackingMiddleware',
 ]
 
 ROOT_URLCONF = 'alx_travel_app.urls'
@@ -177,45 +178,45 @@ if not os.path.exists(LOG_DIR):
 
 LOGGING = {
     "version": 1,
-    "disable_existing_loggers": False,
+    "disable_existing_loggers": False,  # keep Django’s default loggers
+
     "formatters": {
         "verbose": {
-            "format": "[{asctime}] {levelname} {name} {message}",
+            "format": "[{levelname}] {asctime} {module}.{funcName}:{lineno} - {message}",
             "style": "{",
         },
         "simple": {
-            "format": "{levelname} {message}",
+            "format": "[{levelname}] {message}",
             "style": "{",
         },
     },
+
     "handlers": {
-        "file": {
-            "level": "INFO",
-            "class": "logging.FileHandler",
-            "filename": os.path.join(LOG_DIR, "django.log"),  # main log file
-            "formatter": "verbose",
-        },
-        "security_file": {
-            "level": "WARNING",
-            "class": "logging.FileHandler",
-            "filename": os.path.join(LOG_DIR, "security.log"),  # security log
-            "formatter": "verbose",
-        },
         "console": {
-            "level": "DEBUG",
             "class": "logging.StreamHandler",
-            "formatter": "simple",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": "django_debug.log",   # log file in project root
+            "formatter": "verbose",
         },
     },
+
+    "root": {  # root logger
+        "handlers": ["console", "file"],
+        "level": "INFO",
+    },
+
     "loggers": {
         "django": {
-            "handlers": ["file", "console"],
+            "handlers": ["console", "file"],
             "level": "INFO",
-            "propagate": True,
+            "propagate": False,
         },
-        "django.security": {
-            "handlers": ["security_file", "console"],
-            "level": "WARNING",
+        "listings": {  
+            "handlers": ["console", "file"],
+            "level": "DEBUG",
             "propagate": False,
         },
     },

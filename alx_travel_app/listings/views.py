@@ -3,20 +3,20 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from django.shortcuts import get_object_or_404
-from django.views.decorators.csrf import csrf_exempt
 from django.core.cache import cache
 
 from .utils.helper_functions import check_if_is_admin, check_single_user_in_cache_db, check_if_user_is_a_host, check_if_property_in_cache_db, check_if_user_has_booked
 from .models import Property, Booking, Payment
 from .tasks import email_verification
-from .models import Property, Booking, Review, Host
+from .utils.tokens import get_token
+from .models import Property, Booking, Host
 from .serializers import PaymentSerializer
-import uuid
+import uuid, os
 
-def geneate_random_uuid():
+def generate_random_uuid():
+    count = 0
     uu = uuid.uuid4
-    return uu 
+    return f"{uu}_{count+1}" 
 
 class ModifyHostViewset(viewsets.ModelViewSet):
     serializer_class = HostSerializer
@@ -148,7 +148,7 @@ class PropertyViewset(viewsets.ModelViewSet):
         description = serializer.validated_data['description']
         location = serializer.validated_data['location']
         pricepernight = serializer.validated_data['pricepernight']
-        property = Property.objects.create(user=host, name=name, description=description, 
+        property = Property.objects.create(user=request.user, name=name, description=description, 
                                            location=location, pricepernight=pricepernight)
         cache.set(f"property_{property.property_id}", property)
         serializer = self.serializer_class(property)
@@ -202,13 +202,15 @@ class PropertyViewset(viewsets.ModelViewSet):
     
 class BookingViewset(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
-    queryset = None
+    lookup_field = "uuid"
 
+    def get_queryset(self):
+        return Booking.objects.filter(user=self.request.user)
+        
     def create(self, request, *args, **kwargs):
         user = check_single_user_in_cache_db(request.user.user_id)
         if not user:
             return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
-        print(kwargs.get('uuid'))
         property = check_if_property_in_cache_db(kwargs.get('uuid'))
         if not property:
             return Response({'error': 'Property does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -231,8 +233,7 @@ class BookingViewset(viewsets.ModelViewSet):
         user = check_single_user_in_cache_db(request.user.user_id)
         if not user:
             return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
-        all_bookings = list(Booking.objects.filter(user=user))
-        serializer = self.serializer_class(all_bookings, many=True)
+        serializer = self.serializer_class(self.get_queryset(), many=True)
         return Response(data=serializer.data, status=status.HTTP_200_OK)
     
     def update(self, request, *args, **kwargs):
@@ -257,16 +258,28 @@ class PaymentViewset(APIView):
         user = check_single_user_in_cache_db(request.user.user_id)
         if not user:
             return Response({'error': 'User does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
-        booking = kwargs.get("uuid")
-        if booking is None:
+        booking_id = kwargs.get("uuid")
+        if booking_id is None:
             return Response({'error': 'Booking does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+        booking = check_if_user_has_booked(user.user_id, booking_id)
+        if not booking:
+            return Response({"error": "Booking does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+        # if booking.status == "verified":
+        #     return Response({"error": "Payment has been made already"}, status=status.HTTP_400_BAD_REQUEST)
         Payment.objects.create(
-            booking=booking, amount=booking.total_amount, transaction_id=geneate_random_uuid()
+            booking=booking, amount=booking.total_price, transaction_id=generate_random_uuid()
         )
         booking.status="verified"
         booking.save(update_fields=["status"])
-        serializer = self.serializer_class(booking)
-        return Response({"success": serializer.data}, status=status.HTTP_200_OK)
+        token = get_token(booking.user.user_id, booking.user.email)
+        email_verification.delay(
+            subject="Email Verification",
+            email=booking.user.email,
+            txt_template_name="listings/text_mails/payment_successful.txt",
+            verification_url=f"{os.environ.get('APP_DOMAIN')}/verify?token={token}"
+        )
+        self.serializer_class(booking)
+        return Response({"success": "Payment made successfully"}, status=status.HTTP_200_OK)
 
 # def generate_tx_ref(booking_id: str) -> str:
 #     # Take only first 12 chars of booking_id (or whatever you use)
@@ -306,7 +319,6 @@ class PaymentViewset(APIView):
 #         }
 #         response = requests.post(url, headers=headers, json=payload)
 #         data = response.json()
-#         print(data['status'])
 #         if data['status'] != 'success':
 #             return JsonResponse(data, status=response.status_code)
 #         Payment.objects.create(

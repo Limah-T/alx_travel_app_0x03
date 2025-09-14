@@ -44,17 +44,24 @@ def check_if_property_in_cache_db(property_id):
             property_instance = Property.objects.get(property_id=property_id, status='verified')
             cache.set(f"property_{property_id}", property_instance)
             property = property_instance
-            print(True)
             return property
         except Property.DoesNotExist:
-            print(False)
             return False
     return property
 
-def check_if_user_has_booked(user_id):
+def check_if_user_has_booked(user_id, booking_id):
     try:
-        booking = Booking.objects.filter(user__user_id=user_id).order_by("created_at")
+        booking = Booking.objects.get(user__user_id=user_id, booking_id=booking_id)
     except Booking.DoesNotExist:
         return False
     return booking
+
+# Get the Client Ip address
+def get_client_ip(request):
+    address = request.META.get('HTTP_X_FORWARDED_FOR')
+    if address:
+        ip_address = address.split(",")[0].strip()
+    else:
+        ip_address = request.META['REMOTE_ADDR']
+    return ip_address
     

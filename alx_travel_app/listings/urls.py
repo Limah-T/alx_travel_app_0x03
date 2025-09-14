@@ -26,7 +26,7 @@ urlpatterns = [
 
     path('property/', PropertyViewset.as_view({'post': 'create', 'get': 'list'}), name='property'),
     path('property/<uuid:uuid>/', PropertyViewset.as_view({'get': 'retrieve', 'patch': 'update', 'put': 'update', 'delete': 'destroy'})),
-    path('booking/', BookingViewset.as_view({'get': 'list', 'get': 'retrieve'}), name='booking'),
+    path('booking/', BookingViewset.as_view({'get': 'list'}), name='booking'),
     path('booking/<uuid:uuid>/', BookingViewset.as_view({'post': 'create', 'patch': 'update', 'put': 'update'}), name='booking'),
 
     path('payment/<uuid:uuid>/', PaymentViewset.as_view(), name='payment'),
