@@ -7,8 +7,8 @@ class IPTrackingMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.rate_limit = 3
-        self.window = 120
+        self.rate_limit = 60
+        self.window = 300
 
     def __call__(self, request):
         ip_address = get_client_ip(request)
