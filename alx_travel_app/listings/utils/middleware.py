@@ -17,7 +17,7 @@ class IPTrackingMiddleware:
         ip_key = cache.get(address, [])
 
         requests = [ts for ts in ip_key if now - ts < self.window]
-        if len(requests) >= 3:
+        if len(requests) >= self.rate_limit:
             return JsonResponse({'error': 'Too many requests at a time!'}, status=429)
         requests.append(now)
         cache.set(address, requests, self.window)
