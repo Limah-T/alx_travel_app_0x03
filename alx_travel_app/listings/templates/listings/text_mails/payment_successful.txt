@@ -3,11 +3,8 @@ Hello,
 We have received your payment request. To verify and complete the process, please confirm the payment details below:
 
 Amount Paid: ₦[amount]
-
 Payment Method: [method, e.g., Bank Transfer, Card]
-
 Transaction ID: [transaction_id]
-
 Date: [date]
 
 If these details are correct, no further action is required. If you did not authorize this transaction or notice any discrepancies, please contact us immediately at [support email/phone].
@@ -15,4 +12,4 @@ If these details are correct, no further action is required. If you did not auth
 Thank you for your prompt attention.
 
 Best regards,
-[Your Company/Team Name]
+PropertyApp
