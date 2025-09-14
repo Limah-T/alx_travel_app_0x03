@@ -178,7 +178,7 @@ class PropertyViewset(viewsets.ModelViewSet):
         property = check_if_property_in_cache_db(kwargs.get('uuid'))
         if not property:
             return Response({'error': 'Property does not exist or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
-        if host.uuid != property.user.user_id or request.user.role != 'admin':
+        if host.host != property.user.user_id or request.user.role != 'admin':
             return Response({'error': 'You do not have permission to perform this action!'}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.get_serializer(data=request.data, instance=property, partial=True)
         serializer.is_valid(raise_exception=True)
